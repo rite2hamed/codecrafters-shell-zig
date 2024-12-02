@@ -10,5 +10,6 @@ pub fn main() !void {
     const user_input = try stdin.readUntilDelimiter(&buffer, '\n');
 
     // TODO: Handle user input
-    _ = user_input;
+    const cmd = user_input;
+    std.debug.print("{s}: not found\n", .{cmd});
 }
