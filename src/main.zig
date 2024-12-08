@@ -1,6 +1,7 @@
 const std = @import("std");
+const REPL = @import("repl.zig");
 
-pub fn main() !void {
+pub fn main_() !void {
     // Uncomment this block to pass the first stage
     const stdout = std.io.getStdOut().writer();
     while (true) {
@@ -15,4 +16,15 @@ pub fn main() !void {
         // TODO: Handle user input
         std.debug.print("{s}: not found\n", .{cmd});
     }
+}
+
+pub fn main() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit() == .ok;
+    const allocator = gpa.allocator();
+
+    var repl = try REPL.init(allocator, std.io.getStdIn().reader(), std.io.getStdOut().writer());
+    defer repl.deinit();
+    try repl.loop();
+    // std.process.exit(0);
 }
