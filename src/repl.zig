@@ -20,6 +20,7 @@ const REPL = @This();
 pub fn init(allocator: Allocator, reader: FileReader, writer: FileWriter) !REPL {
     var result = REPL{ .allocator = allocator, .reader = reader, .writer = writer, .commands = std.StringHashMap(CommandInfo).init(allocator) };
     try result.commands.put("exit", .{ .name = "exit", .arity = 2 });
+    try result.commands.put("echo", .{ .name = "echo", .arity = -1 });
     return result;
 }
 
@@ -41,9 +42,11 @@ pub fn loop(self: *REPL) !void {
         }
         const cmd_info = self.commands.getPtr(cmd.?);
         if (cmd_info) |info| {
-            var resolvedCommand = Command.init(info, &it);
+            var resolvedCommand = try Command.init(self.allocator, info, &it);
+            defer resolvedCommand.deinit();
             const result = resolvedCommand.evaluate();
             self.looping = result.looping;
+            try resolvedCommand.print(self.writer);
         } else {
             try self.writer.print("{s}: command not found\n", .{cmd.?});
         }
@@ -59,12 +62,44 @@ const CommandResult = struct {
     looping: bool = true,
 };
 
+const EchoCommand = struct {
+    allocator: Allocator,
+    args: [][]const u8,
+
+    pub fn init(allocator: Allocator, it: *SplitIterator) !EchoCommand {
+        var list = std.ArrayList([]const u8).init(allocator);
+        while (it.next()) |fragment| {
+            try list.append(fragment);
+        }
+        const args = try list.toOwnedSlice();
+        return .{ .allocator = allocator, .args = args };
+    }
+
+    pub fn evaluate(_: *EchoCommand) CommandResult {
+        //no op
+        return .{};
+    }
+
+    pub fn deinit(self: *EchoCommand) void {
+        self.allocator.free(self.args);
+    }
+
+    pub fn print(self: *EchoCommand, writer: FileWriter) !void {
+        for (self.args) |arg| {
+            try writer.print("{s} ", .{arg});
+        }
+        try writer.print("{c}", .{'\n'});
+    }
+};
+
 const ExitCommand = struct {
+    allocator: Allocator,
     status: u8,
 
     pub fn init(
+        allocator: Allocator,
         it: *SplitIterator,
-    ) ExitCommand {
+    ) !ExitCommand {
         var s: u8 = 0;
         if (it.next()) |n| {
             // std.debug.print("parsing {s}...\n", .{n});
@@ -72,44 +107,72 @@ const ExitCommand = struct {
             // std.debug.print("parsed: {d}\n", .{s});
             // std.debug.print("parsed: {any}\n", .{s});
         }
-        return .{ .status = s };
+        return .{ .allocator = allocator, .status = s };
     }
 
     pub fn evaluate(self: *ExitCommand) CommandResult {
         std.process.exit(self.status);
         return .{ .looping = false };
     }
+
+    pub fn deinit(_: *ExitCommand) void {
+        //noop
+    }
+
+    pub fn print(_: *ExitCommand, _: FileWriter) !void {}
 };
 
 const Command = union(enum) {
     exit: ExitCommand,
+    echo: EchoCommand,
 
-    pub fn init(cmdInfo: *CommandInfo, it: *SplitIterator) Command {
+    pub fn init(allocator: Allocator, cmdInfo: *CommandInfo, it: *SplitIterator) !Command {
         var cmd: Command = undefined;
         if (std.ascii.eqlIgnoreCase(cmdInfo.name, "exit")) {
-            cmd = toExitCommand(it);
+            cmd = try toExitCommand(allocator, it);
+        }
+        if (std.ascii.eqlIgnoreCase(cmdInfo.name, "echo")) {
+            cmd = try toEchoCommand(allocator, it);
         }
         return cmd;
     }
 
-    fn toExitCommand(it: *SplitIterator) Command {
-        return .{ .exit = ExitCommand.init(it) };
+    fn toExitCommand(allocator: Allocator, it: *SplitIterator) !Command {
+        return .{ .exit = try ExitCommand.init(allocator, it) };
+    }
+
+    fn toEchoCommand(allocator: Allocator, it: *SplitIterator) !Command {
+        return .{ .echo = try EchoCommand.init(allocator, it) };
+    }
+
+    pub fn print(self: *Command, writer: FileWriter) !void {
+        switch (self.*) {
+            inline else => |cmd| {
+                var kmd = cmd;
+                return kmd.print(writer);
+            },
+        }
     }
 
     pub fn evaluate(self: *Command) CommandResult {
         switch (self.*) {
-            .exit => |exit| {
-                var _exit = exit;
-                return _exit.evaluate();
+            // .exit => |exit| {
+            //     var _exit = exit;
+            //     return _exit.evaluate();
+            // },
+            inline else => |cmd| {
+                var kmd = cmd;
+                return kmd.evaluate();
             },
-            // else => |cmd| {
-            //     var kmd = cmd;
-            //     std.debug.print("who am i? {any}\n", .{kmd});
-            //     return kmd.evaluate();
-            // },
-            // .exit => |cmd| {
-            //     std.process.exit(cmd.status);
-            // },
+        }
+    }
+
+    pub fn deinit(self: *Command) void {
+        switch (self.*) {
+            inline else => |cmd| {
+                var kmd = cmd;
+                return kmd.deinit();
+            },
         }
     }
 };
