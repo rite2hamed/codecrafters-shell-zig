@@ -85,10 +85,9 @@ const EchoCommand = struct {
     }
 
     pub fn print(self: *EchoCommand, writer: FileWriter) !void {
-        for (self.args) |arg| {
-            try writer.print("{s} ", .{arg});
-        }
-        try writer.print("{c}", .{'\n'});
+        const output = try std.mem.join(self.allocator, " ", self.args);
+        defer self.allocator.free(output);
+        try writer.print("{s}\n", .{output});
     }
 };
 
