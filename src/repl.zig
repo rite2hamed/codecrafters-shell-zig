@@ -13,20 +13,25 @@ looping: bool = true,
 allocator: Allocator,
 reader: FileReader,
 writer: FileWriter,
-commands: std.StringHashMap(CommandInfo),
+builtins: std.StringHashMap(CommandInfo),
 
 const REPL = @This();
 
 pub fn init(allocator: Allocator, reader: FileReader, writer: FileWriter) !REPL {
-    var result = REPL{ .allocator = allocator, .reader = reader, .writer = writer, .commands = std.StringHashMap(CommandInfo).init(allocator) };
-    try result.commands.put("exit", .{ .name = "exit", .arity = 2 });
-    try result.commands.put("echo", .{ .name = "echo", .arity = -1 });
+    var result = REPL{ .allocator = allocator, .reader = reader, .writer = writer, .builtins = std.StringHashMap(CommandInfo).init(allocator) };
+    try result.builtins.put("exit", .{ .name = "exit", .arity = 2 });
+    try result.builtins.put("echo", .{ .name = "echo", .arity = -1 });
+    try result.builtins.put("type", .{ .name = "type", .arity = 2 });
     return result;
 }
 
 pub fn deinit(self: *REPL) void {
-    self.commands.deinit();
+    self.builtins.deinit();
     // self.* = undefined;
+}
+
+pub fn is_builtin(self: *REPL, cmd: []const u8) bool {
+    return self.builtins.contains(cmd);
 }
 
 pub fn loop(self: *REPL) !void {
@@ -40,13 +45,12 @@ pub fn loop(self: *REPL) !void {
         if (cmd == null) {
             return error.InvalidInput;
         }
-        const cmd_info = self.commands.getPtr(cmd.?);
+        const cmd_info = self.builtins.getPtr(cmd.?);
         if (cmd_info) |info| {
-            var resolvedCommand = try Command.init(self.allocator, info, &it);
+            var resolvedCommand = try Command.init(self, info, &it);
             defer resolvedCommand.deinit();
-            const result = resolvedCommand.evaluate();
-            self.looping = result.looping;
-            try resolvedCommand.print(self.writer);
+            resolvedCommand.evaluate();
+            try resolvedCommand.print();
         } else {
             try self.writer.print("{s}: command not found\n", .{cmd.?});
         }
@@ -62,43 +66,68 @@ const CommandResult = struct {
     looping: bool = true,
 };
 
+const TypeCommand = struct {
+    repl: *REPL,
+    cmd: []const u8,
+
+    pub fn init(repl: *REPL, it: *SplitIterator) !TypeCommand {
+        var cmd: []const u8 = undefined;
+        if (it.next()) |arg| {
+            cmd = try repl.allocator.dupe(u8, arg);
+        }
+        return .{ .repl = repl, .cmd = cmd };
+    }
+
+    pub fn deinit(self: *TypeCommand) void {
+        self.repl.allocator.free(self.cmd);
+    }
+
+    pub fn evaluate(_: *TypeCommand) void {
+        //no op
+    }
+
+    pub fn print(self: *TypeCommand) !void {
+        if (self.repl.is_builtin(self.cmd)) {
+            try self.repl.writer.print("{s} is a shell builtin\n", .{self.cmd});
+        } else {
+            try self.repl.writer.print("{s}: not found\n", .{self.cmd});
+        }
+    }
+};
+
 const EchoCommand = struct {
-    allocator: Allocator,
+    repl: *REPL,
     args: [][]const u8,
 
-    pub fn init(allocator: Allocator, it: *SplitIterator) !EchoCommand {
-        var list = std.ArrayList([]const u8).init(allocator);
+    pub fn init(repl: *REPL, it: *SplitIterator) !EchoCommand {
+        var list = std.ArrayList([]const u8).init(repl.allocator);
         while (it.next()) |fragment| {
             try list.append(fragment);
         }
         const args = try list.toOwnedSlice();
-        return .{ .allocator = allocator, .args = args };
+        return .{ .repl = repl, .args = args };
     }
 
-    pub fn evaluate(_: *EchoCommand) CommandResult {
+    pub fn evaluate(_: *EchoCommand) void {
         //no op
-        return .{};
     }
 
     pub fn deinit(self: *EchoCommand) void {
-        self.allocator.free(self.args);
+        self.repl.allocator.free(self.args);
     }
 
-    pub fn print(self: *EchoCommand, writer: FileWriter) !void {
-        const output = try std.mem.join(self.allocator, " ", self.args);
-        defer self.allocator.free(output);
-        try writer.print("{s}\n", .{output});
+    pub fn print(self: *EchoCommand) !void {
+        const output = try std.mem.join(self.repl.allocator, " ", self.args);
+        defer self.repl.allocator.free(output);
+        try self.repl.writer.print("{s}\n", .{output});
     }
 };
 
 const ExitCommand = struct {
-    allocator: Allocator,
+    repl: *REPL,
     status: u8,
 
-    pub fn init(
-        allocator: Allocator,
-        it: *SplitIterator,
-    ) !ExitCommand {
+    pub fn init(repl: *REPL, it: *SplitIterator) !ExitCommand {
         var s: u8 = 0;
         if (it.next()) |n| {
             // std.debug.print("parsing {s}...\n", .{n});
@@ -106,54 +135,63 @@ const ExitCommand = struct {
             // std.debug.print("parsed: {d}\n", .{s});
             // std.debug.print("parsed: {any}\n", .{s});
         }
-        return .{ .allocator = allocator, .status = s };
+        return .{ .repl = repl, .status = s };
     }
 
-    pub fn evaluate(self: *ExitCommand) CommandResult {
+    pub fn evaluate(self: *ExitCommand) void {
+        self.repl.looping = false;
         std.process.exit(self.status);
-        return .{ .looping = false };
     }
 
     pub fn deinit(_: *ExitCommand) void {
         //noop
     }
 
-    pub fn print(_: *ExitCommand, _: FileWriter) !void {}
+    pub fn print(_: *ExitCommand) !void {}
 };
 
 const Command = union(enum) {
     exit: ExitCommand,
     echo: EchoCommand,
+    type: TypeCommand,
 
-    pub fn init(allocator: Allocator, cmdInfo: *CommandInfo, it: *SplitIterator) !Command {
+    pub fn init(repl: *REPL, cmdInfo: *CommandInfo, it: *SplitIterator) !Command {
         var cmd: Command = undefined;
         if (std.ascii.eqlIgnoreCase(cmdInfo.name, "exit")) {
-            cmd = try toExitCommand(allocator, it);
+            cmd = try toExitCommand(repl, it);
         }
         if (std.ascii.eqlIgnoreCase(cmdInfo.name, "echo")) {
-            cmd = try toEchoCommand(allocator, it);
+            cmd = try toEchoCommand(repl, it);
+        }
+
+        if (std.ascii.eqlIgnoreCase(cmdInfo.name, "type")) {
+            cmd = try toTypeCommand(repl, it);
         }
         return cmd;
     }
 
-    fn toExitCommand(allocator: Allocator, it: *SplitIterator) !Command {
-        return .{ .exit = try ExitCommand.init(allocator, it) };
+    fn toExitCommand(repl: *REPL, it: *SplitIterator) !Command {
+        return .{ .exit = try ExitCommand.init(repl, it) };
     }
 
-    fn toEchoCommand(allocator: Allocator, it: *SplitIterator) !Command {
-        return .{ .echo = try EchoCommand.init(allocator, it) };
+    fn toEchoCommand(repl: *REPL, it: *SplitIterator) !Command {
+        return .{ .echo = try EchoCommand.init(repl, it) };
     }
 
-    pub fn print(self: *Command, writer: FileWriter) !void {
+    fn toTypeCommand(repl: *REPL, it: *SplitIterator) !Command {
+        return .{ .type = try TypeCommand.init(repl, it) };
+    }
+
+    pub fn print(self: *Command) !void {
         switch (self.*) {
             inline else => |cmd| {
                 var kmd = cmd;
-                return kmd.print(writer);
+                return kmd.print();
             },
         }
     }
 
-    pub fn evaluate(self: *Command) CommandResult {
+    pub fn evaluate(self: *Command) void {
         switch (self.*) {
             // .exit => |exit| {
             //     var _exit = exit;
@@ -161,7 +199,7 @@ const Command = union(enum) {
             // },
             inline else => |cmd| {
                 var kmd = cmd;
-                return kmd.evaluate();
+                kmd.evaluate();
             },
         }
     }
