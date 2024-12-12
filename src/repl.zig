@@ -14,6 +14,7 @@ allocator: Allocator,
 reader: FileReader,
 writer: FileWriter,
 builtins: std.StringHashMap(CommandInfo),
+path: ?[]const u8 = undefined,
 
 const REPL = @This();
 
@@ -22,11 +23,16 @@ pub fn init(allocator: Allocator, reader: FileReader, writer: FileWriter) !REPL 
     try result.builtins.put("exit", .{ .name = "exit", .arity = 2 });
     try result.builtins.put("echo", .{ .name = "echo", .arity = -1 });
     try result.builtins.put("type", .{ .name = "type", .arity = 2 });
+    result.path = try std.process.getEnvVarOwned(allocator, "PATH");
+    std.debug.print("Inferred PATH = {s}\n", .{result.path.?});
     return result;
 }
 
 pub fn deinit(self: *REPL) void {
     self.builtins.deinit();
+    if (self.path) |p| {
+        self.allocator.free(p);
+    }
     // self.* = undefined;
 }
 
@@ -90,8 +96,33 @@ const TypeCommand = struct {
         if (self.repl.is_builtin(self.cmd)) {
             try self.repl.writer.print("{s} is a shell builtin\n", .{self.cmd});
         } else {
-            try self.repl.writer.print("{s}: not found\n", .{self.cmd});
+            //lookup PATH variable
+            const found = try self.search_path();
+            if (!found) {
+                try self.repl.writer.print("{s}: not found\n", .{self.cmd});
+            }
         }
+    }
+
+    fn search_path(self: *TypeCommand) !bool {
+        if (self.repl.path) |p| {
+            var it = std.mem.split(u8, p, ":");
+            while (it.next()) |dir| {
+                const full_path = try std.fs.path.join(self.repl.allocator, &[_][]const u8{ dir, self.cmd });
+                defer self.repl.allocator.free(full_path);
+
+                const file = std.fs.openFileAbsolute(full_path, .{ .mode = .read_only }) catch continue;
+                defer file.close();
+
+                const mode = file.mode() catch continue;
+                const is_executable = mode & 0b001 != 0;
+                if (!is_executable) continue;
+
+                try self.repl.writer.print("{s} is {s}\n", .{ self.cmd, full_path });
+                return true;
+            }
+        }
+        return false;
     }
 };
 
