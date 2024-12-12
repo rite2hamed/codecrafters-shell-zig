@@ -24,7 +24,7 @@ pub fn init(allocator: Allocator, reader: FileReader, writer: FileWriter) !REPL 
     try result.builtins.put("echo", .{ .name = "echo", .arity = -1 });
     try result.builtins.put("type", .{ .name = "type", .arity = 2 });
     result.path = try std.process.getEnvVarOwned(allocator, "PATH");
-    std.debug.print("Inferred PATH = {s}\n", .{result.path.?});
+    // std.debug.print("Inferred PATH = {s}\n", .{result.path.?});
     return result;
 }
 
