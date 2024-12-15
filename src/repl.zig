@@ -18,10 +18,12 @@ path: ?[]const u8 = undefined,
 
 const REPL = @This();
 
+var exec_command_info: CommandInfo = .{ .name = "exec", .arity = -2 };
+
 pub fn init(allocator: Allocator, reader: FileReader, writer: FileWriter) !REPL {
     var result = REPL{ .allocator = allocator, .reader = reader, .writer = writer, .builtins = std.StringHashMap(CommandInfo).init(allocator) };
     try result.builtins.put("exit", .{ .name = "exit", .arity = 2 });
-    try result.builtins.put("echo", .{ .name = "echo", .arity = -1 });
+    try result.builtins.put("echo", .{ .name = "echo", .arity = -2 });
     try result.builtins.put("type", .{ .name = "type", .arity = 2 });
     result.path = try std.process.getEnvVarOwned(allocator, "PATH");
     // std.debug.print("Inferred PATH = {s}\n", .{result.path.?});
@@ -40,6 +42,36 @@ pub fn is_builtin(self: *REPL, cmd: []const u8) bool {
     return self.builtins.contains(cmd);
 }
 
+fn is_executableOwned(self: *REPL, cmd: []const u8) !?[]u8 {
+    if (self.path) |p| {
+        var pit = std.mem.split(u8, p, ":");
+        while (pit.next()) |path| {
+            var dir = std.fs.openDirAbsolute(path, .{}) catch continue;
+            defer dir.close();
+
+            var walker = try dir.walk(self.allocator);
+            defer walker.deinit();
+
+            while (try walker.next()) |entry| {
+                if (entry.kind == .file and std.mem.eql(u8, entry.basename, cmd)) {
+                    const full_path = try std.fs.path.join(self.allocator, &.{ path, entry.path });
+
+                    const file = std.fs.openFileAbsolute(full_path, .{}) catch continue;
+                    defer file.close();
+                    const mode = file.mode() catch continue;
+
+                    if ((mode & 0b001) == 1) {
+                        return full_path;
+                    } else {
+                        continue;
+                    }
+                }
+            }
+        }
+    }
+    return null;
+}
+
 pub fn loop(self: *REPL) !void {
     while (self.looping) {
         try self.writer.print("$ ", .{});
@@ -51,11 +83,15 @@ pub fn loop(self: *REPL) !void {
         if (cmd == null) {
             return error.InvalidInput;
         }
-        const cmd_info = self.builtins.getPtr(cmd.?);
+        var cmd_info = self.builtins.getPtr(cmd.?);
+        if (cmd_info == null) {
+            cmd_info = &exec_command_info;
+            it.reset();
+        }
         if (cmd_info) |info| {
             var resolvedCommand = try Command.init(self, info, &it);
             defer resolvedCommand.deinit();
-            resolvedCommand.evaluate();
+            try resolvedCommand.evaluate();
             try resolvedCommand.print();
         } else {
             try self.writer.print("{s}: command not found\n", .{cmd.?});
@@ -70,6 +106,66 @@ pub fn loop(self: *REPL) !void {
 
 const CommandResult = struct {
     looping: bool = true,
+};
+
+const ExecCommand = struct {
+    repl: *REPL,
+    cmd: []const u8,
+    args: [][]const u8,
+
+    pub fn init(repl: *REPL, it: *SplitIterator) !ExecCommand {
+        var cmd: []const u8 = undefined;
+        if (it.next()) |arg| {
+            cmd = try repl.allocator.dupe(u8, arg);
+        }
+        var list = std.ArrayList([]const u8).init(repl.allocator);
+        while (it.next()) |fragment| {
+            try list.append(fragment);
+        }
+        const args = try list.toOwnedSlice();
+        return .{
+            .repl = repl,
+            .cmd = cmd,
+            .args = args,
+        };
+    }
+
+    pub fn evaluate(self: *ExecCommand) !void {
+        const exec = self.repl.is_executableOwned(self.cmd) catch {
+            try self.repl.writer.print("{s}: not found\n", .{self.cmd});
+            return;
+        };
+        if (exec) |exe| {
+            defer self.repl.allocator.free(exe);
+            var program = std.ArrayList([]const u8).init(self.repl.allocator);
+            defer program.deinit();
+
+            //add exe name
+            try program.append(exe);
+            for (self.args) |arg| {
+                try program.append(arg);
+            }
+
+            const argv = try program.toOwnedSlice();
+            defer self.repl.allocator.free(argv);
+
+            var cp = std.ChildProcess.init(argv, self.repl.allocator);
+            _ = try cp.spawnAndWait();
+        } else {
+            try self.repl.writer.print("{s}: not found\n", .{self.cmd});
+        }
+    }
+
+    pub fn deinit(self: *ExecCommand) void {
+        self.repl.allocator.free(self.cmd);
+        self.repl.allocator.free(self.args);
+    }
+
+    pub fn print(_: *ExecCommand) !void {
+        // const output = try std.mem.join(self.repl.allocator, " ", self.args);
+        // defer self.repl.allocator.free(output);
+        // try self.repl.writer.print("EXEC: {s} {s}\n", .{ self.cmd, output });
+    }
 };
 
 const TypeCommand = struct {
@@ -88,7 +184,7 @@ const TypeCommand = struct {
         self.repl.allocator.free(self.cmd);
     }
 
-    pub fn evaluate(_: *TypeCommand) void {
+    pub fn evaluate(_: *TypeCommand) !void {
         //no op
     }
 
@@ -97,32 +193,14 @@ const TypeCommand = struct {
             try self.repl.writer.print("{s} is a shell builtin\n", .{self.cmd});
         } else {
             //lookup PATH variable
-            const found = try self.search_path();
-            if (!found) {
+            const found = try self.repl.is_executableOwned(self.cmd);
+            if (found) |full_path| {
+                defer self.repl.allocator.free(full_path);
+                try self.repl.writer.print("{s} is {s}\n", .{ self.cmd, full_path });
+            } else {
                 try self.repl.writer.print("{s}: not found\n", .{self.cmd});
             }
         }
-    }
-
-    fn search_path(self: *TypeCommand) !bool {
-        if (self.repl.path) |p| {
-            var it = std.mem.split(u8, p, ":");
-            while (it.next()) |dir| {
-                const full_path = try std.fs.path.join(self.repl.allocator, &[_][]const u8{ dir, self.cmd });
-                defer self.repl.allocator.free(full_path);
-
-                const file = std.fs.openFileAbsolute(full_path, .{ .mode = .read_only }) catch continue;
-                defer file.close();
-
-                const mode = file.mode() catch continue;
-                const is_executable = mode & 0b001 != 0;
-                if (!is_executable) continue;
-
-                try self.repl.writer.print("{s} is {s}\n", .{ self.cmd, full_path });
-                return true;
-            }
-        }
-        return false;
     }
 };
 
@@ -139,7 +217,7 @@ const EchoCommand = struct {
         return .{ .repl = repl, .args = args };
     }
 
-    pub fn evaluate(_: *EchoCommand) void {
+    pub fn evaluate(_: *EchoCommand) !void {
         //no op
     }
 
@@ -161,15 +239,12 @@ const ExitCommand = struct {
     pub fn init(repl: *REPL, it: *SplitIterator) !ExitCommand {
         var s: u8 = 0;
         if (it.next()) |n| {
-            // std.debug.print("parsing {s}...\n", .{n});
             s = std.fmt.parseInt(u8, n, 10) catch 0;
-            // std.debug.print("parsed: {d}\n", .{s});
-            // std.debug.print("parsed: {any}\n", .{s});
         }
         return .{ .repl = repl, .status = s };
     }
 
-    pub fn evaluate(self: *ExitCommand) void {
+    pub fn evaluate(self: *ExitCommand) !void {
         self.repl.looping = false;
         std.process.exit(self.status);
     }
@@ -185,6 +260,7 @@ const Command = union(enum) {
     exit: ExitCommand,
     echo: EchoCommand,
     type: TypeCommand,
+    exec: ExecCommand,
 
     pub fn init(repl: *REPL, cmdInfo: *CommandInfo, it: *SplitIterator) !Command {
         var cmd: Command = undefined;
@@ -194,9 +270,11 @@ const Command = union(enum) {
         if (std.ascii.eqlIgnoreCase(cmdInfo.name, "echo")) {
             cmd = try toEchoCommand(repl, it);
         }
-
         if (std.ascii.eqlIgnoreCase(cmdInfo.name, "type")) {
             cmd = try toTypeCommand(repl, it);
+        }
+        if (std.ascii.eqlIgnoreCase(cmdInfo.name, "exec")) {
+            cmd = try toExecCommand(repl, it);
         }
         return cmd;
     }
@@ -213,6 +291,10 @@ const Command = union(enum) {
         return .{ .type = try TypeCommand.init(repl, it) };
     }
 
+    fn toExecCommand(repl: *REPL, it: *SplitIterator) !Command {
+        return .{ .exec = try ExecCommand.init(repl, it) };
+    }
+
     pub fn print(self: *Command) !void {
         switch (self.*) {
             inline else => |cmd| {
@@ -222,7 +304,7 @@ const Command = union(enum) {
         }
     }
 
-    pub fn evaluate(self: *Command) void {
+    pub fn evaluate(self: *Command) !void {
         switch (self.*) {
             // .exit => |exit| {
             //     var _exit = exit;
@@ -230,7 +312,7 @@ const Command = union(enum) {
             // },
             inline else => |cmd| {
                 var kmd = cmd;
-                kmd.evaluate();
+                return kmd.evaluate();
             },
         }
     }
