@@ -149,7 +149,7 @@ const ExecCommand = struct {
             const argv = try program.toOwnedSlice();
             defer self.repl.allocator.free(argv);
 
-            var cp = std.ChildProcess.init(argv, self.repl.allocator);
+            var cp = std.process.Child.init(argv, self.repl.allocator);
             _ = try cp.spawnAndWait();
         } else {
             try self.repl.writer.print("{s}: not found\n", .{self.cmd});
