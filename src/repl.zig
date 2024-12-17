@@ -46,7 +46,7 @@ fn is_executableOwned(self: *REPL, cmd: []const u8) !?[]u8 {
     if (self.path) |p| {
         var pit = std.mem.split(u8, p, ":");
         while (pit.next()) |path| {
-            var dir = std.fs.openDirAbsolute(path, .{}) catch |err| {
+            var dir = std.fs.openDirAbsolute(path, .{ .iterate = true }) catch |err| {
                 std.log.err("open error: {}\n", .{err});
                 continue;
             };
@@ -55,21 +55,48 @@ fn is_executableOwned(self: *REPL, cmd: []const u8) !?[]u8 {
             var walker = try dir.walk(self.allocator);
             defer walker.deinit();
 
-            while (try walker.next()) |entry| {
-                if (entry.kind == .file and std.mem.eql(u8, entry.basename, cmd)) {
-                    const full_path = try std.fs.path.join(self.allocator, &.{ path, entry.path });
+            // while (walker.next() catch |err| {
+            //     std.log.err("walk error: {}\n", .{err});
+            // }) |entry| {
 
-                    const file = std.fs.openFileAbsolute(full_path, .{}) catch continue;
-                    defer file.close();
-                    const mode = file.mode() catch continue;
+            while (true) {
+                const ent = walker.next() catch |err| {
+                    std.log.debug("walker err: {}\n", .{err});
+                    continue;
+                };
+                if (ent == null) break;
+                if (ent) |entry| {
+                    if (entry.kind == .file and std.mem.eql(u8, entry.basename, cmd)) {
+                        const full_path = try std.fs.path.join(self.allocator, &.{ path, entry.path });
 
-                    if ((mode & 0b001) == 1) {
-                        return full_path;
-                    } else {
-                        continue;
+                        const file = std.fs.openFileAbsolute(full_path, .{}) catch continue;
+                        defer file.close();
+                        const mode = file.mode() catch continue;
+
+                        if ((mode & 0b001) == 1) {
+                            return full_path;
+                        } else {
+                            continue;
+                        }
                     }
                 }
             }
+
+            // while (try walker.next()) |entry| {
+            //     if (entry.kind == .file and std.mem.eql(u8, entry.basename, cmd)) {
+            //         const full_path = try std.fs.path.join(self.allocator, &.{ path, entry.path });
+
+            //         const file = std.fs.openFileAbsolute(full_path, .{}) catch continue;
+            //         defer file.close();
+            //         const mode = file.mode() catch continue;
+
+            //         if ((mode & 0b001) == 1) {
+            //             return full_path;
+            //         } else {
+            //             continue;
+            //         }
+            //     }
+            // }
         }
     }
     return null;
