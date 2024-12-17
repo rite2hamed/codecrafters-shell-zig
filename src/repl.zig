@@ -46,9 +46,9 @@ fn is_executableOwned(self: *REPL, cmd: []const u8) !?[]u8 {
     if (self.path) |p| {
         var pit = std.mem.split(u8, p, ":");
         while (pit.next()) |path| {
-            std.log.info("iterating path: {s}\n", .{path});
+            // std.log.info("iterating path: {s}\n", .{path});
             var dir = std.fs.openDirAbsolute(path, .{ .iterate = true }) catch |err| {
-                std.log.err("[open error]: {}\n", .{err});
+                std.log.info("[open error]: {}\n", .{err});
                 continue;
             };
             defer dir.close();
