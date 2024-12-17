@@ -46,7 +46,10 @@ fn is_executableOwned(self: *REPL, cmd: []const u8) !?[]u8 {
     if (self.path) |p| {
         var pit = std.mem.split(u8, p, ":");
         while (pit.next()) |path| {
-            var dir = std.fs.openDirAbsolute(path, .{}) catch continue;
+            var dir = std.fs.openDirAbsolute(path, .{}) catch |err| {
+                std.log.err("open error: {}\n", .{err});
+                continue;
+            };
             defer dir.close();
 
             var walker = try dir.walk(self.allocator);
