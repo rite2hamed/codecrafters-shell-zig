@@ -48,7 +48,10 @@ fn is_executableOwned(self: *REPL, cmd: []const u8) !?[]u8 {
         while (pit.next()) |path| {
             // std.log.info("iterating path: {s}\n", .{path});
             var dir = std.fs.openDirAbsolute(path, .{ .iterate = true }) catch |err| {
-                std.log.info("[path:{s}][open error]: {}\n", .{ path, err });
+                // std.log.info("[path:{s}][open error]: {}\n", .{ path, err });
+                switch (err) {
+                    else => {},
+                }
                 continue;
             };
             defer dir.close();
@@ -62,7 +65,10 @@ fn is_executableOwned(self: *REPL, cmd: []const u8) !?[]u8 {
 
             while (true) {
                 const ent = walker.next() catch |err| {
-                    std.log.err("[walker err]: {}\n", .{err});
+                    // std.log.err("[walker err]: {}\n", .{err});
+                    switch (err) {
+                        else => {},
+                    }
                     continue;
                 };
                 if (ent == null) break;
