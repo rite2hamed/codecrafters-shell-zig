@@ -47,7 +47,10 @@ fn is_executableOwned(self: *REPL, cmd: []const u8) !?[]u8 {
         var pit = std.mem.split(u8, p, ":");
         while (pit.next()) |path| {
             // std.log.info("iterating path: {s}\n", .{path});
-            var dir = std.fs.openDirAbsolute(path, .{ .iterate = true, .no_follow = true }) catch |err| {
+            var dir = std.fs.openDirAbsolute(path, .{
+                .iterate = true,
+                .no_follow = true,
+            }) catch |err| {
                 // std.log.info("[path:{s}][open error]: {}\n", .{ path, err });
                 switch (err) {
                     else => {},
@@ -63,47 +66,47 @@ fn is_executableOwned(self: *REPL, cmd: []const u8) !?[]u8 {
             //     std.log.err("walk error: {}\n", .{err});
             // }) |entry| {
 
-            while (true) {
-                const ent = walker.next() catch |err| {
-                    // std.log.err("[walker err]: {}\n", .{err});
-                    switch (err) {
-                        else => {},
-                    }
-                    continue;
-                };
-                if (ent == null) break;
-                if (ent) |entry| {
-                    if (entry.kind == .file and std.mem.eql(u8, entry.basename, cmd)) {
-                        const full_path = try std.fs.path.join(self.allocator, &.{ path, entry.path });
+            // outer: while (true) {
+            //     const ent = walker.next() catch |err| {
+            //         // std.log.err("[walker err]: {}\n", .{err});
+            //         switch (err) {
+            //             else => {},
+            //         }
+            //         continue;
+            //     };
+            //     if (ent == null) break :outer;
+            //     if (ent) |entry| {
+            //         if (entry.kind == .file and std.mem.eql(u8, entry.basename, cmd)) {
+            //             const full_path = try std.fs.path.join(self.allocator, &.{ path, entry.path });
 
-                        const file = std.fs.openFileAbsolute(full_path, .{}) catch continue;
-                        defer file.close();
-                        const mode = file.mode() catch continue;
+            //             const file = std.fs.openFileAbsolute(full_path, .{}) catch continue;
+            //             defer file.close();
+            //             const mode = file.mode() catch continue;
 
-                        if ((mode & 0b001) == 1) {
-                            return full_path;
-                        } else {
-                            continue;
-                        }
-                    }
-                }
-            }
-
-            // while (try walker.next()) |entry| {
-            //     if (entry.kind == .file and std.mem.eql(u8, entry.basename, cmd)) {
-            //         const full_path = try std.fs.path.join(self.allocator, &.{ path, entry.path });
-
-            //         const file = std.fs.openFileAbsolute(full_path, .{}) catch continue;
-            //         defer file.close();
-            //         const mode = file.mode() catch continue;
-
-            //         if ((mode & 0b001) == 1) {
-            //             return full_path;
-            //         } else {
-            //             continue;
+            //             if ((mode & 0b001) == 1) {
+            //                 return full_path;
+            //             } else {
+            //                 continue;
+            //             }
             //         }
             //     }
             // }
+
+            while (try walker.next()) |entry| {
+                if (entry.kind == .file and std.mem.eql(u8, entry.basename, cmd)) {
+                    const full_path = try std.fs.path.join(self.allocator, &.{ path, entry.path });
+
+                    const file = std.fs.openFileAbsolute(full_path, .{}) catch continue;
+                    defer file.close();
+                    const mode = file.mode() catch continue;
+
+                    if ((mode & 0b001) == 1) {
+                        return full_path;
+                    } else {
+                        continue;
+                    }
+                }
+            }
         }
     }
     return null;
