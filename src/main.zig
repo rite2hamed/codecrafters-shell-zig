@@ -23,7 +23,11 @@ pub fn main() !void {
     defer _ = gpa.deinit() == .ok;
     const allocator = gpa.allocator();
 
-    var repl = try REPL.init(allocator, std.io.getStdIn().reader(), std.io.getStdOut().writer());
+    var repl = try REPL.init(
+        allocator,
+        std.io.getStdIn().reader(),
+        std.io.getStdOut().writer(),
+    );
     defer repl.deinit();
     try repl.loop();
     // std.process.exit(0);
