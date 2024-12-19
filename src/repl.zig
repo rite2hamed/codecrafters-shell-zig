@@ -43,7 +43,7 @@ pub fn is_builtin(self: *REPL, cmd: []const u8) bool {
 }
 
 fn is_executableOwned(self: *REPL, cmd: []const u8) !?[]u8 {
-    std.log.info("PATH={s}", .{self.path});
+    std.log.info("PATH={s}", .{self.path.?});
     if (self.path) |p| {
         var pit = std.mem.split(u8, p, ":");
         while (pit.next()) |path| {
