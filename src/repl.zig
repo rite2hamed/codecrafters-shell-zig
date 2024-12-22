@@ -199,7 +199,7 @@ const ExecCommand = struct {
 
     pub fn evaluate(self: *ExecCommand) !void {
         const exec = self.repl.exutableOwned(self.cmd) catch {
-            try self.repl.writer.print("{s}: not found\n", .{self.cmd});
+            try self.repl.writer.print("{s}: command not found\n", .{self.cmd});
             return;
         };
         if (exec) |exe| {
