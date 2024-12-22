@@ -33,6 +33,7 @@ pub fn init(allocator: Allocator, reader: FileReader, writer: FileWriter) !REPL 
     try result.builtins.put("echo", .{ .name = "echo", .arity = -2 });
     try result.builtins.put("type", .{ .name = "type", .arity = 2 });
     try result.builtins.put("pwd", .{ .name = "pwd", .arity = 1 });
+    try result.builtins.put("cd", .{ .name = "cd", .arity = 2 });
     result.path = try std.process.getEnvVarOwned(allocator, "PATH");
     result.home = try std.process.getEnvVarOwned(allocator, "HOME");
     // std.debug.print("Inferred PATH = {s}\n", .{result.path.?});
@@ -189,6 +190,35 @@ pub fn loop(self: *REPL) !void {
 
 const CommandResult = struct {
     looping: bool = true,
+};
+
+const CdCommand = struct {
+    repl: *REPL,
+    cmd: []const u8,
+
+    pub fn init(repl: *REPL, it: *SplitIterator) !CdCommand {
+        var cmd: []const u8 = undefined;
+        const arg = it.next() orelse repl.cwd;
+        cmd = try repl.allocator.dupe(u8, arg);
+        return .{ .repl = repl, .cmd = cmd };
+    }
+
+    pub fn deinit(self: *CdCommand) void {
+        self.repl.allocator.free(self.cmd);
+    }
+
+    pub fn evaluate(self: *CdCommand) !void {
+        if (std.process.changeCurDir(self.cmd)) {
+            self.repl.cwd = try self.repl.allocator.dupe(u8, self.cmd);
+        } else |err| switch (err) {
+            error.FileNotFound, error.NotDir => {
+                try self.repl.writer.print("cd: {s}: No such file or directory\n", .{self.cmd});
+            },
+            else => {},
+        }
+    }
+
+    pub fn print(_: *CdCommand) !void {}
 };
 
 //PwdCommand
@@ -366,6 +396,7 @@ const Command = union(enum) {
     type: TypeCommand,
     exec: ExecCommand,
     pwd: PwdCommand,
+    cd: CdCommand,
 
     pub fn init(repl: *REPL, cmdInfo: *CommandInfo, it: *SplitIterator) !Command {
         var cmd: Command = undefined;
@@ -378,12 +409,16 @@ const Command = union(enum) {
         if (std.ascii.eqlIgnoreCase(cmdInfo.name, "type")) {
             cmd = try toTypeCommand(repl, it);
         }
-        if (std.ascii.eqlIgnoreCase(cmdInfo.name, "exec")) {
-            cmd = try toExecCommand(repl, it);
-        }
         if (std.ascii.eqlIgnoreCase(cmdInfo.name, "pwd")) {
             cmd = try toPwdCommand(repl);
         }
+        if (std.ascii.eqlIgnoreCase(cmdInfo.name, "cd")) {
+            cmd = try toCdCommand(repl, it);
+        }
+        if (std.ascii.eqlIgnoreCase(cmdInfo.name, "exec")) {
+            cmd = try toExecCommand(repl, it);
+        }
+
         return cmd;
     }
 
@@ -397,6 +432,10 @@ const Command = union(enum) {
 
     fn toTypeCommand(repl: *REPL, it: *SplitIterator) !Command {
         return .{ .type = try TypeCommand.init(repl, it) };
+    }
+
+    fn toCdCommand(repl: *REPL, it: *SplitIterator) !Command {
+        return .{ .cd = try CdCommand.init(repl, it) };
     }
 
     fn toExecCommand(repl: *REPL, it: *SplitIterator) !Command {
