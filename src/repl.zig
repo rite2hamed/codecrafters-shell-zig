@@ -15,18 +15,32 @@ reader: FileReader,
 writer: FileWriter,
 builtins: std.StringHashMap(CommandInfo),
 path: ?[]const u8 = undefined,
+home: []const u8 = undefined,
+cwd: []const u8 = undefined,
 
 const REPL = @This();
 
 var exec_command_info: CommandInfo = .{ .name = "exec", .arity = -2 };
 
 pub fn init(allocator: Allocator, reader: FileReader, writer: FileWriter) !REPL {
-    var result = REPL{ .allocator = allocator, .reader = reader, .writer = writer, .builtins = std.StringHashMap(CommandInfo).init(allocator) };
+    var result = REPL{
+        .allocator = allocator,
+        .reader = reader,
+        .writer = writer,
+        .builtins = std.StringHashMap(CommandInfo).init(allocator),
+    };
     try result.builtins.put("exit", .{ .name = "exit", .arity = 2 });
     try result.builtins.put("echo", .{ .name = "echo", .arity = -2 });
     try result.builtins.put("type", .{ .name = "type", .arity = 2 });
+    try result.builtins.put("pwd", .{ .name = "pwd", .arity = 1 });
     result.path = try std.process.getEnvVarOwned(allocator, "PATH");
+    result.home = try std.process.getEnvVarOwned(allocator, "HOME");
     // std.debug.print("Inferred PATH = {s}\n", .{result.path.?});
+    // std.log.info("HOME folder: {s}\n", .{result.home});
+    var cwd: [64]u8 = undefined;
+    const temp = try std.process.getCwd(&cwd);
+    result.cwd = try allocator.dupe(u8, temp);
+    // std.log.info("CWD = {s}\n", .{temp});
     return result;
 }
 
@@ -35,6 +49,8 @@ pub fn deinit(self: *REPL) void {
     if (self.path) |p| {
         self.allocator.free(p);
     }
+    self.allocator.free(self.home);
+    self.allocator.free(self.cwd);
     // self.* = undefined;
 }
 
@@ -173,6 +189,27 @@ pub fn loop(self: *REPL) !void {
 
 const CommandResult = struct {
     looping: bool = true,
+};
+
+//PwdCommand
+const PwdCommand = struct {
+    repl: *REPL,
+
+    pub fn init(repl: *REPL) !PwdCommand {
+        return .{ .repl = repl };
+    }
+
+    pub fn deinit(_: *PwdCommand) void {
+        //no op
+    }
+
+    pub fn evaluate(_: *PwdCommand) !void {
+        //no op
+    }
+
+    pub fn print(self: *PwdCommand) !void {
+        try self.repl.writer.print("{s}\n", .{self.repl.cwd});
+    }
 };
 
 const ExecCommand = struct {
@@ -328,6 +365,7 @@ const Command = union(enum) {
     echo: EchoCommand,
     type: TypeCommand,
     exec: ExecCommand,
+    pwd: PwdCommand,
 
     pub fn init(repl: *REPL, cmdInfo: *CommandInfo, it: *SplitIterator) !Command {
         var cmd: Command = undefined;
@@ -342,6 +380,9 @@ const Command = union(enum) {
         }
         if (std.ascii.eqlIgnoreCase(cmdInfo.name, "exec")) {
             cmd = try toExecCommand(repl, it);
+        }
+        if (std.ascii.eqlIgnoreCase(cmdInfo.name, "pwd")) {
+            cmd = try toPwdCommand(repl);
         }
         return cmd;
     }
@@ -360,6 +401,10 @@ const Command = union(enum) {
 
     fn toExecCommand(repl: *REPL, it: *SplitIterator) !Command {
         return .{ .exec = try ExecCommand.init(repl, it) };
+    }
+
+    fn toPwdCommand(repl: *REPL) !Command {
+        return .{ .pwd = try PwdCommand.init(repl) };
     }
 
     pub fn print(self: *Command) !void {
