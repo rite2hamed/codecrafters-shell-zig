@@ -42,6 +42,27 @@ pub fn is_builtin(self: *REPL, cmd: []const u8) bool {
     return self.builtins.contains(cmd);
 }
 
+fn exutableOwned(self: *REPL, cmd: []const u8) !?[]u8 {
+    if (self.path) |p| {
+        var it = std.mem.split(u8, p, ":");
+        while (it.next()) |dir| {
+            const full_path = try std.fs.path.join(self.allocator, &[_][]const u8{ dir, cmd });
+            defer self.allocator.free(full_path);
+
+            const file = std.fs.openFileAbsolute(full_path, .{ .mode = .read_only }) catch continue;
+            defer file.close();
+
+            const mode = file.mode() catch continue;
+            const is_executable = mode & 0b001 != 0;
+            if (!is_executable) continue;
+
+            // try self.repl.writer.print("{s} is {s}\n", .{ self.cmd, full_path });
+            return try self.allocator.dupe(u8, full_path);
+        }
+    }
+    return null;
+}
+
 fn is_executableOwned(self: *REPL, cmd: []const u8) !?[]u8 {
     // std.log.info("PATH={s}", .{self.path.?});
     // std.log.err("PATH={s}", .{self.path.?});
@@ -177,7 +198,7 @@ const ExecCommand = struct {
     }
 
     pub fn evaluate(self: *ExecCommand) !void {
-        const exec = self.repl.is_executableOwned(self.cmd) catch {
+        const exec = self.repl.exutableOwned(self.cmd) catch {
             try self.repl.writer.print("{s}: not found\n", .{self.cmd});
             return;
         };
@@ -239,7 +260,7 @@ const TypeCommand = struct {
             try self.repl.writer.print("{s} is a shell builtin\n", .{self.cmd});
         } else {
             //lookup PATH variable
-            const found = try self.repl.is_executableOwned(self.cmd);
+            const found = try self.repl.exutableOwned(self.cmd);
             if (found) |full_path| {
                 defer self.repl.allocator.free(full_path);
                 try self.repl.writer.print("{s} is {s}\n", .{ self.cmd, full_path });
