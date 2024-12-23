@@ -1,5 +1,5 @@
 const std = @import("std");
-pub fn main() !void {
+pub fn main_0() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit() == .ok;
     const allocator = gpa.allocator();
@@ -22,4 +22,15 @@ pub fn main() !void {
         }
     }
     std.debug.print("Hello world!\n", .{});
+}
+
+pub fn main() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit() == .ok;
+    const allocator = gpa.allocator();
+
+    const cd = try std.fs.cwd().realpathAlloc(allocator, "/usr");
+    defer allocator.free(cd);
+
+    std.debug.print("cd => {s}\n", .{cd});
 }

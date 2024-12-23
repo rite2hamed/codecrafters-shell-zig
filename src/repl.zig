@@ -208,14 +208,40 @@ const CdCommand = struct {
     }
 
     pub fn evaluate(self: *CdCommand) !void {
-        if (std.process.changeCurDir(self.cmd)) {
-            self.repl.cwd = try self.repl.allocator.dupe(u8, self.cmd);
+        if (std.fs.cwd().realpathAlloc(self.repl.allocator, self.cmd)) |changed| {
+            self.repl.allocator.free(self.repl.cwd);
+            self.repl.cwd = changed;
+            std.process.changeCurDir(self.repl.cwd) catch unreachable;
         } else |err| switch (err) {
             error.FileNotFound, error.NotDir => {
                 try self.repl.writer.print("cd: {s}: No such file or directory\n", .{self.cmd});
             },
             else => {},
         }
+        // const changed = std.fs.cwd().realpathAlloc(self.repl.allocator, self.cmd) catch |err| {
+        //     switch (err) {
+        //         error.FileNotFound, error.NotDir => {
+        //             try self.repl.writer.print("cd: {s}: No such file or directory\n", .{self.cmd});
+        //         },
+        //         else => {},
+        //     }
+        // };
+        // errdefer self.repl.allocator.free(changed);
+        // defer self.repl.allocator.free(changed);
+
+        // self.repl.allocator.free(self.repl.cwd);
+        // self.repl.cwd = changed;
+
+        // if (std.process.changeCurDir(self.cmd)) {
+        //     self.repl.allocator.free(self.repl.cwd);
+        //     self.repl.cwd = try std.fs.cwd().realpathAlloc(self.repl.allocator, self.cmd);
+        //     // self.repl.cwd = try self.repl.allocator.dupe(u8, self.cmd);
+        // } else |err| switch (err) {
+        //     error.FileNotFound, error.NotDir => {
+        //         try self.repl.writer.print("cd: {s}: No such file or directory\n", .{self.cmd});
+        //     },
+        //     else => {},
+        // }
     }
 
     pub fn print(_: *CdCommand) !void {}
