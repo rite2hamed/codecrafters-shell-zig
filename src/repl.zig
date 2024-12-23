@@ -36,11 +36,12 @@ pub fn init(allocator: Allocator, reader: FileReader, writer: FileWriter) !REPL 
     try result.builtins.put("cd", .{ .name = "cd", .arity = 2 });
     result.path = try std.process.getEnvVarOwned(allocator, "PATH");
     result.home = try std.process.getEnvVarOwned(allocator, "HOME");
+    result.cwd = try std.process.getCwdAlloc(allocator);
     // std.debug.print("Inferred PATH = {s}\n", .{result.path.?});
     // std.log.info("HOME folder: {s}\n", .{result.home});
-    var cwd: [64]u8 = undefined;
-    const temp = try std.process.getCwd(&cwd);
-    result.cwd = try allocator.dupe(u8, temp);
+    // var cwd: [64]u8 = undefined;
+    // const temp = try std.process.getCwd(&cwd);
+    // result.cwd = try allocator.dupe(u8, temp);
     // std.log.info("CWD = {s}\n", .{temp});
     return result;
 }
@@ -208,6 +209,12 @@ const CdCommand = struct {
     }
 
     pub fn evaluate(self: *CdCommand) !void {
+        // std.log.info("CD::CMD: {s}", .{self.cmd});
+        if (std.mem.startsWith(u8, self.cmd, "~")) {
+            // std.log.info("switching to home ~", .{});
+            // self.repl.allocator.free(self.cmd);
+            self.cmd = try self.repl.allocator.dupe(u8, self.repl.home);
+        }
         if (std.fs.cwd().realpathAlloc(self.repl.allocator, self.cmd)) |changed| {
             self.repl.allocator.free(self.repl.cwd);
             self.repl.cwd = changed;
