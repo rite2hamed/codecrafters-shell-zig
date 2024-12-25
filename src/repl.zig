@@ -286,13 +286,27 @@ const ExecCommand = struct {
             cmd = try repl.allocator.dupe(u8, arg);
         }
         var list = std.ArrayList([]const u8).init(repl.allocator);
+        var found: usize = 0;
         while (it.next()) |fragment| {
-            if (fragment.len == 0) continue;
-            const temp = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
+            if (fragment.len == 0 and @rem(found, 2) == 0) continue;
+            // std.log.info("fragment=\"{s}\"", .{fragment});
+            if (std.mem.indexOf(u8, fragment, "'")) |_| {
+                found += 1;
+                const temp = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
+                try list.append(temp[0..]);
+            } else {
+                try list.append(fragment);
+            }
+            // const temp = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
             // defer repl.allocator.free(temp);
-            try list.append(temp[0..]);
-            // try list.append(fragment);
         }
+        // while (it.next()) |fragment| {
+        //     if (fragment.len == 0) continue;
+        //     const temp = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
+        //     // defer repl.allocator.free(temp);
+        //     try list.append(temp[0..]);
+        //     // try list.append(fragment);
+        // }
         const args = try list.toOwnedSlice();
         return .{
             .repl = repl,
@@ -381,11 +395,19 @@ const EchoCommand = struct {
 
     pub fn init(repl: *REPL, it: *SplitIterator) !EchoCommand {
         var list = std.ArrayList([]const u8).init(repl.allocator);
+        var found: usize = 0;
         while (it.next()) |fragment| {
-            if (fragment.len == 0) continue;
-            const temp = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
+            if (fragment.len == 0 and @rem(found, 2) == 0) continue;
+            // std.log.info("fragment=\"{s}\"", .{fragment});
+            if (std.mem.indexOf(u8, fragment, "'")) |_| {
+                found += 1;
+                const temp = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
+                try list.append(temp[0..]);
+            } else {
+                try list.append(fragment);
+            }
+            // const temp = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
             // defer repl.allocator.free(temp);
-            try list.append(temp[0..]);
         }
         const args = try list.toOwnedSlice();
         return .{ .repl = repl, .args = args };
