@@ -287,7 +287,10 @@ const ExecCommand = struct {
         }
         var list = std.ArrayList([]const u8).init(repl.allocator);
         while (it.next()) |fragment| {
-            try list.append(fragment);
+            const temp = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
+            // defer repl.allocator.free(temp);
+            try list.append(temp[0..]);
+            // try list.append(fragment);
         }
         const args = try list.toOwnedSlice();
         return .{
@@ -378,7 +381,9 @@ const EchoCommand = struct {
     pub fn init(repl: *REPL, it: *SplitIterator) !EchoCommand {
         var list = std.ArrayList([]const u8).init(repl.allocator);
         while (it.next()) |fragment| {
-            try list.append(fragment);
+            const temp = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
+            // defer repl.allocator.free(temp);
+            try list.append(temp[0..]);
         }
         const args = try list.toOwnedSlice();
         return .{ .repl = repl, .args = args };
