@@ -401,6 +401,8 @@ const EchoCommand = struct {
         var list = std.ArrayList([]const u8).init(repl.allocator);
         var ai = ArgIterator{ .buffer = it.rest() };
         while (ai.next()) |fragment| {
+            // std.debug.print("echo: [{s}]\n", .{fragment});
+            if (fragment.len == 0) continue;
             try list.append(fragment);
         }
         const args = try list.toOwnedSlice();
