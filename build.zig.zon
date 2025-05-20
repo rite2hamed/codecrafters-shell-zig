@@ -1,5 +1,5 @@
 .{
-    .name = .codecrafters_shell,
+    .name = "codecrafters_shell",
     // .name = .codecrafters_shell,
 
     // This is a [Semantic Version](https://semver.org/).
