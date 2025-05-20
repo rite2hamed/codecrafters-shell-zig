@@ -1,4 +1,5 @@
 const std = @import("std");
+const ArgIterator = @import("./common.zig").ArgIterator;
 const Allocator = std.mem.Allocator;
 const FileReader = std.fs.File.Reader;
 const FileWriter = std.fs.File.Writer;
@@ -62,7 +63,7 @@ pub fn is_builtin(self: *REPL, cmd: []const u8) bool {
 
 fn exutableOwned(self: *REPL, cmd: []const u8) !?[]u8 {
     if (self.path) |p| {
-        var it = std.mem.split(u8, p, ":");
+        var it = std.mem.splitSequence(u8, p, ":");
         while (it.next()) |dir| {
             const full_path = try std.fs.path.join(self.allocator, &[_][]const u8{ dir, cmd });
             defer self.allocator.free(full_path);
@@ -85,7 +86,7 @@ fn is_executableOwned(self: *REPL, cmd: []const u8) !?[]u8 {
     // std.log.info("PATH={s}", .{self.path.?});
     // std.log.err("PATH={s}", .{self.path.?});
     if (self.path) |p| {
-        var pit = std.mem.split(u8, p, ":");
+        var pit = std.mem.splitSequence(u8, p, ":");
         while (pit.next()) |path| {
             // std.log.err("iterating path: {s}\n", .{path});
             var dir = std.fs.openDirAbsolute(path, .{
@@ -163,7 +164,7 @@ pub fn loop(self: *REPL) !void {
         //read
         var buffer: [1024]u8 = undefined;
         const user_input = try self.reader.readUntilDelimiter(&buffer, '\n');
-        var it = std.mem.split(u8, user_input, " ");
+        var it = std.mem.splitSequence(u8, user_input, " ");
         const cmd = it.next();
         if (cmd == null) {
             return error.InvalidInput;
@@ -308,6 +309,9 @@ const ExecCommand = struct {
         //     // try list.append(fragment);
         // }
         const args = try list.toOwnedSlice();
+        // for (args) |arg| {
+        //     std.log.info("arg = {s}", .{arg});
+        // }
         return .{
             .repl = repl,
             .cmd = cmd,
@@ -395,19 +399,9 @@ const EchoCommand = struct {
 
     pub fn init(repl: *REPL, it: *SplitIterator) !EchoCommand {
         var list = std.ArrayList([]const u8).init(repl.allocator);
-        var found: usize = 0;
-        while (it.next()) |fragment| {
-            if (fragment.len == 0 and @rem(found, 2) == 0) continue;
-            // std.log.info("fragment=\"{s}\"", .{fragment});
-            if (std.mem.indexOf(u8, fragment, "'")) |_| {
-                found += 1;
-                const temp = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
-                try list.append(temp[0..]);
-            } else {
-                try list.append(fragment);
-            }
-            // const temp = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
-            // defer repl.allocator.free(temp);
+        var ai = ArgIterator{ .buffer = it.rest() };
+        while (ai.next()) |fragment| {
+            try list.append(fragment);
         }
         const args = try list.toOwnedSlice();
         return .{ .repl = repl, .args = args };

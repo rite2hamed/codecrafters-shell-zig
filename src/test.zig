@@ -34,3 +34,6 @@ pub fn main() !void {
 
     std.debug.print("cd => {s}\n", .{cd});
 }
+
+//bit locker key
+//197879-155452-387200-250690-349624-490677-168366-244750
