@@ -77,7 +77,7 @@ fn exutableOwned(self: *REPL, cmd: []const u8) !?[]u8 {
             if (!is_executable) continue;
 
             // try self.repl.writer.print("{s} is {s}\n", .{ self.cmd, full_path });
-            return try self.allocator.dupe(u8, cmd);
+            return try self.allocator.dupe(u8, full_path);
         }
     }
     return null;
@@ -316,7 +316,8 @@ const ExecCommand = struct {
             defer program.deinit();
 
             //add exe name
-            try program.append(exe);
+            var bit = std.mem.splitBackwardsSequence(u8, exe, "/");
+            try program.append(try bit.next());
             for (self.args) |arg| {
                 try program.append(arg);
             }
