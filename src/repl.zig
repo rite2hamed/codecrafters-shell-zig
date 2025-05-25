@@ -317,6 +317,9 @@ const ExecCommand = struct {
 
             //add exe name
             var bit = std.mem.splitBackwardsSequence(u8, exe, "/");
+            if (bit.next()) |n| {
+                try program.append(n);
+            }
             try program.append(try bit.next());
             for (self.args) |arg| {
                 try program.append(arg);
