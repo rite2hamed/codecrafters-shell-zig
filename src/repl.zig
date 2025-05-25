@@ -14,7 +14,7 @@ looping: bool = true,
 allocator: Allocator,
 reader: FileReader,
 writer: FileWriter,
-console: FileWriter = std.io.getStdErr().writer(),
+// console: FileWriter = std.io.getStdErr().writer(),
 builtins: std.StringHashMap(CommandInfo),
 path: ?[]const u8 = undefined,
 home: []const u8 = undefined,
@@ -404,9 +404,9 @@ const EchoCommand = struct {
         while (ai.next()) |fragment| {
             // std.debug.print("echo: [{s}]\n", .{fragment});
             if (fragment.len == 0) continue;
-            try repl.console.print("echo: [{s}]\n", .{fragment});
+            // try repl.console.print("echo: [{s}]\n", .{fragment});
             const owned = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
-            try repl.console.print("echo owned: [{s}]\n", .{owned});
+            // try repl.console.print("echo owned: [{s}]\n", .{owned});
             try list.append(owned);
         }
         const args = try list.toOwnedSlice();
