@@ -403,7 +403,8 @@ const EchoCommand = struct {
         while (ai.next()) |fragment| {
             // std.debug.print("echo: [{s}]\n", .{fragment});
             if (fragment.len == 0) continue;
-            try list.append(fragment);
+            const owned = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'\"", "");
+            try list.append(owned);
         }
         const args = try list.toOwnedSlice();
         return .{ .repl = repl, .args = args };
@@ -414,6 +415,9 @@ const EchoCommand = struct {
     }
 
     pub fn deinit(self: *EchoCommand) void {
+        for (self.args) |arg| {
+            self.repl.allocator.free(arg);
+        }
         self.repl.allocator.free(self.args);
     }
 
