@@ -288,31 +288,16 @@ const ExecCommand = struct {
             cmd = try repl.allocator.dupe(u8, arg);
         }
         var list = std.ArrayList([]const u8).init(repl.allocator);
-        var found: usize = 0;
-        while (it.next()) |fragment| {
-            if (fragment.len == 0 and @rem(found, 2) == 0) continue;
-            // std.log.info("fragment=\"{s}\"", .{fragment});
-            if (std.mem.indexOf(u8, fragment, "'")) |_| {
-                found += 1;
-                const temp = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
-                try list.append(temp[0..]);
-            } else {
-                try list.append(fragment);
-            }
-            // const temp = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
-            // defer repl.allocator.free(temp);
+        var ai = ArgIterator{ .buffer = it.rest() };
+        while (ai.next()) |fragment| {
+            // std.debug.print("echo: [{s}]\n", .{fragment});
+            if (fragment.len == 0) continue;
+            // try repl.console.print("echo: [{s}]\n", .{fragment});
+            const owned = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
+            // try repl.console.print("echo owned: [{s}]\n", .{owned});
+            try list.append(owned);
         }
-        // while (it.next()) |fragment| {
-        //     if (fragment.len == 0) continue;
-        //     const temp = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
-        //     // defer repl.allocator.free(temp);
-        //     try list.append(temp[0..]);
-        //     // try list.append(fragment);
-        // }
         const args = try list.toOwnedSlice();
-        // for (args) |arg| {
-        //     std.log.info("arg = {s}", .{arg});
-        // }
         return .{
             .repl = repl,
             .cmd = cmd,
@@ -348,6 +333,9 @@ const ExecCommand = struct {
 
     pub fn deinit(self: *ExecCommand) void {
         self.repl.allocator.free(self.cmd);
+        for (self.args) |arg| {
+            self.repl.allocator.free(arg);
+        }
         self.repl.allocator.free(self.args);
     }
 
