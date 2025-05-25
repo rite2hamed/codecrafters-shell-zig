@@ -293,9 +293,11 @@ const ExecCommand = struct {
             // std.debug.print("echo: [{s}]\n", .{fragment});
             if (fragment.len == 0) continue;
             // try repl.console.print("echo: [{s}]\n", .{fragment});
-            const owned = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
+            const o1 = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
+            defer repl.allocator.free(o1);
+            const o2 = try std.mem.replaceOwned(u8, repl.allocator, o1, "\"", "");
             // try repl.console.print("echo owned: [{s}]\n", .{owned});
-            try list.append(owned);
+            try list.append(o2);
         }
         const args = try list.toOwnedSlice();
         return .{
@@ -396,9 +398,11 @@ const EchoCommand = struct {
             // std.debug.print("echo: [{s}]\n", .{fragment});
             if (fragment.len == 0) continue;
             // try repl.console.print("echo: [{s}]\n", .{fragment});
-            const owned = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
+            const o1 = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
+            defer repl.allocator.free(o1);
+            const o2 = try std.mem.replaceOwned(u8, repl.allocator, o1, "\"", "");
             // try repl.console.print("echo owned: [{s}]\n", .{owned});
-            try list.append(owned);
+            try list.append(o2);
         }
         const args = try list.toOwnedSlice();
         return .{ .repl = repl, .args = args };
