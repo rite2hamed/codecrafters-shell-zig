@@ -9,6 +9,34 @@ pub const ArgIterator = struct {
     pub fn next(self: *Self) ?[]const u8 {
         if (self.index == self.buffer.len)
             return null;
+
+        var single_quotes: bool = false;
+        var double_quotes: bool = false;
+        const start = self.index;
+        while (self.index < self.buffer.len) : (self.index += 1) {
+            const c = self.buffer[self.index];
+            if (c == '\'' and !double_quotes) {
+                single_quotes = !single_quotes;
+                continue;
+            } else if (c == '"' and !single_quotes) {
+                double_quotes = !double_quotes;
+                continue;
+            } else if (std.ascii.isWhitespace(c) and !single_quotes and !double_quotes) {
+                break;
+            }
+        }
+        if (single_quotes or double_quotes) {
+            std.io.getStdErr().writer().print("Error: Unmatched quotes\n", .{}) catch unreachable;
+        }
+        defer {
+            if (self.index < self.buffer.len) self.index += 1;
+        }
+        return self.buffer[start..self.index];
+    }
+
+    pub fn next_0(self: *Self) ?[]const u8 {
+        if (self.index == self.buffer.len)
+            return null;
         const c = self.buffer[self.index];
         const needle: u8 = if (c == '\'' or c == '"') c else ' ';
         // std.debug.print("index: {d} needle: \"{c}\"", .{ self.index, needle });
