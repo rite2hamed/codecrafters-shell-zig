@@ -31,7 +31,7 @@ pub const ArgIterator = struct {
         defer {
             if (self.index < self.buffer.len) self.index += 1;
         }
-        return self.buffer[start..self.index];
+        return std.mem.replaceScalar(u8, self.buffer[start..self.index], '\'', '');
     }
 
     pub fn next_0(self: *Self) ?[]const u8 {
