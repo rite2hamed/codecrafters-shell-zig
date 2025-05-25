@@ -320,7 +320,6 @@ const ExecCommand = struct {
             if (bit.next()) |n| {
                 try program.append(n);
             }
-            try program.append(try bit.next());
             for (self.args) |arg| {
                 try program.append(arg);
             }
