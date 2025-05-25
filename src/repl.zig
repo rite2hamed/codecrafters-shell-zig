@@ -77,7 +77,7 @@ fn exutableOwned(self: *REPL, cmd: []const u8) !?[]u8 {
             if (!is_executable) continue;
 
             // try self.repl.writer.print("{s} is {s}\n", .{ self.cmd, full_path });
-            return try self.allocator.dupe(u8, full_path);
+            return try self.allocator.dupe(u8, cmd);
         }
     }
     return null;
