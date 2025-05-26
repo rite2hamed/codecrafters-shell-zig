@@ -57,7 +57,7 @@ pub const ArgIterator = struct {
 
 pub fn main() !void {
     // const str = "A quick ' brown ' fox jumps over a \"lazy  \" 'dog'";
-    const str = "'world     script' 'test''example'";
+    const str = "test\\ \\ \\ \\ \\ \\ example";
     // "world     script testexample"
     var it = ArgIterator{ .buffer = str };
     while (it.next()) |n| {

@@ -292,6 +292,7 @@ const ExecCommand = struct {
         while (ai.next()) |fragment| {
             // std.debug.print("echo: [{s}]\n", .{fragment});
             if (fragment.len == 0) continue;
+            if (fragment.len == 1 and fragment[0] == '\\') continue;
             // try repl.console.print("echo: [{s}]\n", .{fragment});
             if (fragment[0] == '\'') {
                 const owned = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
@@ -302,8 +303,10 @@ const ExecCommand = struct {
                 const t2 = try std.mem.replaceOwned(u8, repl.allocator, t1, "\\", "");
                 try list.append(t2);
             } else {
-                const owned = try repl.allocator.dupe(u8, fragment);
-                try list.append(owned);
+                const t1 = try repl.allocator.dupe(u8, fragment);
+                defer repl.allocator.free(t1);
+                const t2 = try std.mem.replaceOwned(u8, repl.allocator, t1, "\\", "");
+                try list.append(t2);
             }
             // try repl.console.print("echo owned: [{s}]\n", .{owned});
 
@@ -406,6 +409,7 @@ const EchoCommand = struct {
         while (ai.next()) |fragment| {
             // std.debug.print("echo: [{s}]\n", .{fragment});
             if (fragment.len == 0) continue;
+            if (fragment.len == 1 and fragment[0] == '\\') continue;
             // try repl.console.print("echo: [{s}]\n", .{fragment});
             if (fragment[0] == '\'') {
                 const owned = try std.mem.replaceOwned(u8, repl.allocator, fragment, "\"", "");
@@ -416,8 +420,10 @@ const EchoCommand = struct {
                 const t2 = try std.mem.replaceOwned(u8, repl.allocator, t1, "\\", "");
                 try list.append(t2);
             } else {
-                const owned = try repl.allocator.dupe(u8, fragment);
-                try list.append(owned);
+                const t1 = try repl.allocator.dupe(u8, fragment);
+                defer repl.allocator.free(t1);
+                const t2 = try std.mem.replaceOwned(u8, repl.allocator, t1, "\\", "");
+                try list.append(t2);
             }
         }
         const args = try list.toOwnedSlice();
