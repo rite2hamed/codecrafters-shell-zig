@@ -293,11 +293,16 @@ const ExecCommand = struct {
             // std.debug.print("echo: [{s}]\n", .{fragment});
             if (fragment.len == 0) continue;
             // try repl.console.print("echo: [{s}]\n", .{fragment});
-            const o1 = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
-            defer repl.allocator.free(o1);
-            const o2 = try std.mem.replaceOwned(u8, repl.allocator, o1, "\"", "");
+            var owned: []8 = undefined;
+            if (fragment[0] == '\'') {
+                owned = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
+            } else if (fragment[0] == '"') {
+                owned = std.mem.replaceOwned(u8, repl.allocator, fragment, "\"", "");
+            } else {
+                owned = repl.allocator.dupe(u8, fragment);
+            }
             // try repl.console.print("echo owned: [{s}]\n", .{owned});
-            try list.append(o2);
+            try list.append(owned);
         }
         const args = try list.toOwnedSlice();
         return .{
