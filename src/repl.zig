@@ -405,11 +405,16 @@ const EchoCommand = struct {
             // std.debug.print("echo: [{s}]\n", .{fragment});
             if (fragment.len == 0) continue;
             // try repl.console.print("echo: [{s}]\n", .{fragment});
-            const o1 = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
-            defer repl.allocator.free(o1);
-            const o2 = try std.mem.replaceOwned(u8, repl.allocator, o1, "\"", "");
-            // try repl.console.print("echo owned: [{s}]\n", .{owned});
-            try list.append(o2);
+            if (fragment[0] == '\'') {
+                const owned = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
+                try list.append(owned);
+            } else if (fragment[0] == '"') {
+                const owned = try std.mem.replaceOwned(u8, repl.allocator, fragment, "\"", "");
+                try list.append(owned);
+            } else {
+                const owned = try repl.allocator.dupe(u8, fragment);
+                try list.append(owned);
+            }
         }
         const args = try list.toOwnedSlice();
         return .{ .repl = repl, .args = args };
