@@ -297,8 +297,10 @@ const ExecCommand = struct {
                 const owned = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
                 try list.append(owned);
             } else if (fragment[0] == '"') {
-                const owned = try std.mem.replaceOwned(u8, repl.allocator, fragment, "\"", "");
-                try list.append(owned);
+                const t1 = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
+                defer repl.allocator.free(t1);
+                const t2 = try std.mem.replaceOwned(u8, repl.allocator, t1, "\\", "");
+                try list.append(t2);
             } else {
                 const owned = try repl.allocator.dupe(u8, fragment);
                 try list.append(owned);
@@ -406,11 +408,13 @@ const EchoCommand = struct {
             if (fragment.len == 0) continue;
             // try repl.console.print("echo: [{s}]\n", .{fragment});
             if (fragment[0] == '\'') {
-                const owned = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
-                try list.append(owned);
-            } else if (fragment[0] == '"') {
                 const owned = try std.mem.replaceOwned(u8, repl.allocator, fragment, "\"", "");
                 try list.append(owned);
+            } else if (fragment[0] == '"') {
+                const t1 = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
+                defer repl.allocator.free(t1);
+                const t2 = try std.mem.replaceOwned(u8, repl.allocator, t1, "\\", "");
+                try list.append(t2);
             } else {
                 const owned = try repl.allocator.dupe(u8, fragment);
                 try list.append(owned);
