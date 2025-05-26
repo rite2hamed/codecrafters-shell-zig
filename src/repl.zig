@@ -409,7 +409,6 @@ const EchoCommand = struct {
         while (ai.next()) |fragment| {
             // std.debug.print("echo: [{s}]\n", .{fragment});
             if (fragment.len == 0) continue;
-            if (fragment.len == 1 and fragment[0] == '\\') continue;
             // try repl.console.print("echo: [{s}]\n", .{fragment});
             if (fragment[0] == '\'') {
                 const owned = try std.mem.replaceOwned(u8, repl.allocator, fragment, "\"", "");
