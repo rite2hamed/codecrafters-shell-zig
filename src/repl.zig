@@ -298,9 +298,7 @@ const ExecCommand = struct {
                 try list.append(owned);
             } else if (fragment[0] == '"') {
                 const t1 = try std.mem.replaceOwned(u8, repl.allocator, fragment, "'", "");
-                defer repl.allocator.free(t1);
-                const t2 = try std.mem.replaceOwned(u8, repl.allocator, t1, "\\", "");
-                try list.append(t2);
+                try list.append(t1);
             } else {
                 const t1 = try repl.allocator.dupe(u8, fragment);
                 defer repl.allocator.free(t1);
